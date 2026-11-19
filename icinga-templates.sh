@@ -134,8 +134,9 @@ for f in $(ls | sort); do
   esac
 done
 ok "script .sh eseguiti: $nsh, file .sql applicati: $nsql, falliti: $nfail"
-((SKIPPED_ROWS>0)) && warn "$SKIPPED_ROWS collegamenti template-campo saltati perche' puntano a oggetti inesistenti nella libreria originale (dettagli: $LOG)"
 ((nfail>0)) && warn "falliti: ${failed[*]}  (dettagli: $LOG)"
+SQL_FILES=(); for f in $(ls | sort); do
+  [[ $f == *.sql ]] || continue; [[ $WITH_NETEYE == 1 || $f != 1001* ]] && SQL_FILES+=("$PWD/$f"); done
 
 # ------------------------------------------------------------- [5] basket
 info "[5/7] Basket Director ($BASKET_DIRS)"
@@ -196,6 +197,12 @@ if ((${#pending[@]}>0)); then
   ((${#MISSING_CMDS[@]}>0)) && warn "comandi da definire in Director (e relativi plugin da installare): $(printf '%s\n' "${MISSING_CMDS[@]}" | sort -u | tr '\n' ' ')"
 fi
 
+# Seconda passata sui collegamenti template-campo: i basket hanno creato campi che nella prima passata
+# non esistevano ancora (l'operazione e' rieseguibile, ON CONFLICT DO NOTHING).
+SKIPPED_ROWS=0
+for f in "${SQL_FILES[@]}"; do echo "=== (2a passata) $f" >>"$LOG"; run_sql_lenient "$f"; done
+((SKIPPED_ROWS>0)) && warn "$SKIPPED_ROWS collegamenti template-campo saltati perche' puntano a oggetti inesistenti nella libreria originale (dettagli: $LOG)"
+
 # ------------------------------------------------------------- [6] plugin
 info "[6/7] Plugin"
 install -d "$PLUGDIR"
@@ -219,6 +226,25 @@ grep -qE '^const PluginContribDir' /etc/icinga2/constants.conf 2>/dev/null \
 
 # ----------------------------------------------------------- [7] deploy
 info "[7/7] Deploy configurazione"
+# La libreria di template definisce oggetti che Icinga 2 ha gia' nella sua configurazione predefinita
+# (conf.d: generic-service, generic-host, periodi di tempo, utenti, comandi di notifica...). Con
+# entrambe attive Icinga 2 rifiuta la configurazione ("Object 'generic-service' of type 'Service'
+# re-defined") e dopo il deploy non riparte. Come consiglia la documentazione di Director, conf.d
+# si disattiva e gli oggetti li gestisce Director; si tengono solo gli utenti API (api-users.conf).
+ICINGA2_CONF=/etc/icinga2/icinga2.conf
+if grep -q '^include_recursive "conf.d"' "$ICINGA2_CONF"; then
+  cp -n "$ICINGA2_CONF" "$ICINGA2_CONF.icingacarra.bak"
+  sed -i 's|^include_recursive "conf.d"|// conf.d disattivato da icinga-templates.sh: gli oggetti li gestisce Director\n// include_recursive "conf.d"\ninclude "conf.d/api-users.conf"|' "$ICINGA2_CONF"
+  if icinga2 daemon -C >>"$LOG" 2>&1; then systemctl restart icinga2
+  else warn "icinga2.conf non valido dopo la modifica: ripristino il backup"; cp "$ICINGA2_CONF.icingacarra.bak" "$ICINGA2_CONF"; fi
+  ok "configurazione predefinita (conf.d) disattivata: backup in $ICINGA2_CONF.icingacarra.bak"
+fi
+# Il nodo locale non e' piu' monitorato dalla configurazione predefinita: lo si ricrea in Director.
+NODE=$(icinga2 variable get NodeName 2>/dev/null || true)
+if [[ -n $NODE ]] && icingacli director host exists "$NODE" 2>&1 | grep -q "does not exist"; then
+  icingacli director host create --json "{\"object_name\":\"$NODE\",\"object_type\":\"object\",\"address\":\"127.0.0.1\",\"imports\":[\"generic-host\"]}" >>"$LOG" 2>&1 \
+    && echo "     host '$NODE' creato in Director (monitora il server stesso)" || true
+fi
 # Bug di Director su PostgreSQL: se il pacchetto "director" non ha ancora nessuno stage attivo (primo
 # deploy in assoluto) il deploy fallisce con "bind message supplies 0 parameters". Si crea quindi
 # prima uno stage iniziale vuoto tramite l'API di Icinga 2 e si aspetta che diventi attivo.
@@ -243,7 +269,19 @@ for attempt in 1 2 3 4; do
   if icingacli director config deploy >>"$LOG" 2>&1; then deployed=1; break; fi
   sleep 8     # "ongoing package update in progress": si riprova
 done
-if ((deployed)); then ok "deploy eseguito"
+if ((deployed)); then
+  # Il deploy "riuscito" significa solo che la configurazione e' stata caricata: si controlla anche
+  # che Icinga 2 l'abbia accettata e sia ripartito (startup_succeeded nel registro di Director).
+  res=""
+  for _ in $(seq 1 45); do
+    res=$(psql_dir -tAc "SELECT COALESCE(startup_succeeded::text,'') FROM director_deployment_log ORDER BY id DESC LIMIT 1" 2>/dev/null | tr -d '[:space:]')
+    [[ $res == y || $res == n ]] && break; sleep 2
+  done
+  if [[ $res == y ]]; then ok "deploy eseguito e accettato da Icinga 2"
+  elif [[ $res == n ]]; then
+    warn "configurazione caricata ma Icinga 2 l'ha RIFIUTATA all'avvio:"
+    psql_dir -tAc "SELECT startup_log FROM director_deployment_log ORDER BY id DESC LIMIT 1" 2>/dev/null | grep -i "critical\|error" | head -5 | cut -c1-240 >&2
+  else warn "deploy caricato, esito dell'avvio di Icinga 2 non ancora noto: controlla in Director > Activity log"; fi
 else warn "deploy non riuscito: verificare da UI (Director > Activity log) o in $LOG"; fi
 
 cat <<EOF
