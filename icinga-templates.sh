@@ -239,11 +239,33 @@ if grep -q '^include_recursive "conf.d"' "$ICINGA2_CONF"; then
   else warn "icinga2.conf non valido dopo la modifica: ripristino il backup"; cp "$ICINGA2_CONF.icingacarra.bak" "$ICINGA2_CONF"; fi
   ok "configurazione predefinita (conf.d) disattivata: backup in $ICINGA2_CONF.icingacarra.bak"
 fi
-# Il nodo locale non e' piu' monitorato dalla configurazione predefinita: lo si ricrea in Director.
+# Il server stesso non e' piu' monitorato dalla configurazione predefinita (conf.d): lo si ricrea in
+# Director, con gli stessi controlli che Icinga 2 aveva di serie (conf.d/hosts.conf e services.conf):
+# ping4, ping6, ssh, http, disk, "disk /", load, procs, swap, users, apt e icinga.
 NODE=$(icinga2 variable get NodeName 2>/dev/null || true)
-if [[ -n $NODE ]] && icingacli director host exists "$NODE" 2>&1 | grep -q "does not exist"; then
-  icingacli director host create --json "{\"object_name\":\"$NODE\",\"object_type\":\"object\",\"address\":\"127.0.0.1\",\"imports\":[\"generic-host\"]}" >>"$LOG" 2>&1 \
-    && echo "     host '$NODE' creato in Director (monitora il server stesso)" || true
+if [[ -n $NODE ]]; then
+  if icingacli director host exists "$NODE" 2>&1 | grep -q "does not exist"; then
+    icingacli director host create --json "{\"object_name\":\"$NODE\",\"object_type\":\"object\",\"address\":\"127.0.0.1\",\"address6\":\"::1\",\"imports\":[\"generic-host\"],\"vars\":{\"os\":\"Linux\"}}" >>"$LOG" 2>&1 \
+      && echo "     host '$NODE' creato in Director (monitora il server stesso)" || true
+  elif ! icingacli director host show "$NODE" --json 2>/dev/null | grep -q '"address6"'; then
+    # host gia' esistente (esecuzione precedente) ma senza address6: ping6 non avrebbe l'indirizzo
+    icingacli director host set "$NODE" --address6 "::1" >>"$LOG" 2>&1 || true
+  fi
+  add_local_check() { # nome comando [attributi JSON aggiuntivi]
+    icingacli director service create --json "{\"object_name\":\"$1\",\"object_type\":\"object\",\"host\":\"$NODE\",\"imports\":[\"generic-service\"],\"check_command\":\"$2\"${3:+,$3}}" >>"$LOG" 2>&1 || true
+  }
+  add_local_check ping4 ping4
+  add_local_check ping6 ping6
+  add_local_check ssh   ssh
+  add_local_check http  http '"vars":{"http_uri":"/"}'
+  add_local_check disk  disk
+  add_local_check "disk /" disk '"vars":{"disk_partitions":"/"}'
+  add_local_check load  load
+  add_local_check procs procs
+  add_local_check swap  swap
+  add_local_check users users
+  add_local_check apt   apt '"check_interval":"3600"'
+  add_local_check icinga icinga '"check_interval":"60"'
 fi
 # Bug di Director su PostgreSQL: se il pacchetto "director" non ha ancora nessuno stage attivo (primo
 # deploy in assoluto) il deploy fallisce con "bind message supplies 0 parameters". Si crea quindi
