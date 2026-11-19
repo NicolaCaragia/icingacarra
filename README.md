@@ -30,6 +30,18 @@ Parametri preimpostabili via ambiente: `ICINGA_FQDN`, `TIMEZONE`, `WEB_ADMIN_USE
 
 Al termine: `http://<ip>/icingaweb2`. Le password generate sono in `/root/icinga-credentials.txt` (permessi 600), il log in `/var/log/icinga-setup.log` (template: `/var/log/icinga-templates.log`). Gli script sono rieseguibili.
 
+## VM su Proxmox
+
+Sull'host Proxmox (come root) `proxmox/create-vm.sh` crea una VM Debian 12 gia' pronta: scarica l'immagine cloud, imposta IP (statico o DHCP), DNS, utente e password, abilita il login SSH con password e installa `git` e `qemu-guest-agent` al primo avvio.
+
+```bash
+git clone https://github.com/NicolaCaragia/icingacarra.git && cd icingacarra
+./proxmox/create-vm.sh            # guidato
+IP=10.0.0.50/24 GW=10.0.0.1 STORAGE=local-lvm ./proxmox/create-vm.sh --yes
+```
+
+Le immagini cloud Debian accettano solo chiavi SSH e non hanno password: per questo lo script crea un file cloud-init (snippet) con la password, scritto con permessi 600. Se lo storage non ha il contenuto "Snippets", lo script propone di abilitarlo. Per usare anche la tua chiave: `SSH_PUBKEY_FILE=~/.ssh/id_ed25519.pub`. Poi, nella VM, `sudo ./runsetup.sh` come sopra.
+
 ## VM con Vagrant
 
 ```bash
