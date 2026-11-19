@@ -358,12 +358,12 @@ SQL
 
 for m in icingadb director; do icingacli module enable "$m" >>"$LOG_FILE" 2>&1 || true; done
 
-# Apache
-if icingacli setup --help >/dev/null 2>&1; then
-  icingacli setup config webserver apache --document-root /usr/share/icingaweb2/public \
-    > /etc/apache2/conf-available/icingaweb2.conf
-else
-  # modulo "setup" assente nelle versioni recenti: configurazione scritta a mano
+# Apache: configurazione scritta a mano (il modulo "setup" di icingacli non esiste piu' nelle
+# versioni recenti, e "icingacli setup" esce comunque con codice 0 stampando solo un errore).
+mod_php_conf=$(ls /etc/apache2/mods-available/php*.load 2>/dev/null | head -1 || true)
+a2enmod rewrite >>"$LOG_FILE" 2>&1 || true
+[[ -n $mod_php_conf ]] && a2enmod "$(basename "$mod_php_conf" .load)" >>"$LOG_FILE" 2>&1 || true
+{
   cat > /etc/apache2/conf-available/icingaweb2.conf <<'APACHE'
 Alias /icingaweb2 "/usr/share/icingaweb2/public"
 
@@ -383,7 +383,7 @@ Alias /icingaweb2 "/usr/share/icingaweb2/public"
     RewriteRule ^.*$ index.php [NC,L]
 </Directory>
 APACHE
-fi
+}
 echo 'RedirectMatch ^/$ /icingaweb2' > /etc/apache2/conf-available/icingaweb2-redirect.conf
 a2enmod rewrite >>"$LOG_FILE" 2>&1
 a2enconf icingaweb2 icingaweb2-redirect >>"$LOG_FILE" 2>&1
@@ -433,7 +433,15 @@ for s in postgresql icingadb-redis icinga2 icingadb apache2 icinga-director; do
   [[ $s == postgresql && $PG_LOCAL != 1 ]] && continue
   if systemctl is-active --quiet "$s"; then ok "$s attivo"; else warn "$s NON attivo"; fail=1; fi
 done
-curl -fsL -o /dev/null http://127.0.0.1/icingaweb2/authentication/login && ok "interfaccia web raggiungibile" || { warn "interfaccia web non raggiungibile"; fail=1; }
+# La pagina di login risponde 200 oppure 302 (redirect verso se' stessa con ?_checkCookie=1): seguendo
+# il redirect senza cookie si ottiene 403, quindi qui il redirect NON si segue.
+web_code=000
+for _ in 1 2 3 4 5; do
+  web_code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/icingaweb2/authentication/login || true)
+  [[ $web_code == 200 || $web_code == 302 ]] && break; sleep 2
+done
+if [[ $web_code == 200 || $web_code == 302 ]]; then ok "interfaccia web raggiungibile (HTTP $web_code)"
+else warn "interfaccia web non raggiungibile (HTTP $web_code)"; fail=1; fi
 save_creds
 
 # ------------------------------------------------------ template Director ----

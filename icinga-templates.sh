@@ -76,21 +76,40 @@ s~^[ \t]*ALTER TABLE [^\n]*AUTO_INCREMENT[^\n]*\n~~gmi;
 s~`director`\.~~g;
 s~`~~g;
 s~^[ \t]*(?:--|\#)[^\n]*\n~~gm;
+# Le tabelle director_datafield e director_datalist, in PostgreSQL, hanno una colonna "uuid" (bytea,
+# 16 byte, NOT NULL) che il dump MariaDB non conosce: si inseriscono prima in una tabella
+# d'appoggio e poi si copiano nella tabella vera con un uuid stabile ricavato dal nome (md5 = 16 byte).
+s~INSERT IGNORE\s+(?:INTO\s+)?director_datafield\s*\(([^)]*)\)\s*VALUES(.*?);[ \t]*$~CREATE TEMP TABLE IF NOT EXISTS stg_datafield AS SELECT id, varname, caption, description, datatype, format FROM director_datafield WHERE false;\nINSERT INTO stg_datafield ($1) VALUES$2;\nINSERT INTO director_datafield (id, uuid, varname, caption, description, datatype, format) SELECT id, decode(md5('datafield:' || varname), 'hex'), varname, caption, description, datatype, format FROM stg_datafield ON CONFLICT DO NOTHING;\nTRUNCATE stg_datafield;~gms;
+s~INSERT IGNORE\s+(?:INTO\s+)?director_datalist\s*\(([^)]*)\)\s*VALUES(.*?);[ \t]*$~CREATE TEMP TABLE IF NOT EXISTS stg_datalist AS SELECT id, list_name, owner FROM director_datalist WHERE false;\nINSERT INTO stg_datalist ($1) VALUES$2;\nINSERT INTO director_datalist (id, uuid, list_name, owner) SELECT id, decode(md5('datalist:' || list_name), 'hex'), list_name, owner FROM stg_datalist ON CONFLICT DO NOTHING;\nTRUNCATE stg_datalist;~gms;
 s~INSERT IGNORE\s+(?:INTO\s+)?(.*?);[ \t]*$~INSERT INTO $1 ON CONFLICT DO NOTHING;~gms;
 s~'((?:[^'\x5c]|\x5c.|'')*)'|"([^"\n]*)"~defined $1 ? fix($1) : "'$2'"~ge;
 print;
 PERL
 
-run_sql() { # file
+run_sql() { # file  -> importazione atomica (tutto o niente), per i campi dati
   local out
   out=$(perl "$CONV" <"$1" | psql_dir -1 2>&1) && return 0
   echo "$out" >>"$LOG"; return 1
+}
+SKIPPED_ROWS=0
+# Importazione tollerante, per i file "template -> campo": ogni istruzione e' indipendente, e quelle che
+# puntano a campi/template/comandi che nella libreria originale non esistono (incoerenze del repo di
+# origine) vengono saltate e contate invece di far fallire tutto il file. Rieseguibile (ON CONFLICT).
+run_sql_lenient() { # file
+  local out n
+  out=$(perl "$CONV" <"$1" | sudo -u postgres psql -d "$DIRECTOR_DB" -X -q -v ON_ERROR_STOP=0 2>&1) || true
+  n=$(grep -c '^ERROR:' <<<"$out" || true)
+  if ((n>0)); then echo "$out" >>"$LOG"; SKIPPED_ROWS=$((SKIPPED_ROWS+n)); fi
+  return 0
 }
 
 # ----------------------------------------------------- [3] campi dati Director
 info "[3/7] Campi dati Director (director_datafield, liste)"
 F="$BASE/templates/director_fields/0001-director_datafield.sql"
-if run_sql "$F"; then
+# Gia' importati in una esecuzione precedente (marcatore: lista 50 "Host Service" e campo "host_os")?
+if [[ $(psql_dir -tAc "SELECT count(*) FROM director_datalist l, director_datafield f WHERE l.id = 50 AND l.list_name = 'Host Service' AND f.varname = 'host_os'" 2>/dev/null) == 1 ]]; then
+  ok "campi dati gia' presenti: salto l'importazione"
+elif run_sql "$F"; then
   psql_dir -c "SELECT setval(pg_get_serial_sequence('director_datafield','id'), GREATEST((SELECT COALESCE(max(id),0) FROM director_datafield),10001));" >/dev/null 2>&1
   psql_dir -c "SELECT setval(pg_get_serial_sequence('director_datalist','id'), GREATEST((SELECT COALESCE(max(id),0) FROM director_datalist),10001));" >/dev/null 2>&1
   ok "campi dati importati"
@@ -111,10 +130,11 @@ for f in $(ls | sort); do
       if bash "$f" >>"$LOG" 2>&1; then nsh=$((nsh+1)); else nfail=$((nfail+1)); failed+=("$f"); fi ;;
     *.sql)
       echo "=== $f" >>"$LOG"
-      if run_sql "$f"; then nsql=$((nsql+1)); else nfail=$((nfail+1)); failed+=("$f"); fi ;;
+      run_sql_lenient "$f"; nsql=$((nsql+1)) ;;
   esac
 done
-ok "script .sh eseguiti: $nsh, file .sql convertiti: $nsql, falliti: $nfail"
+ok "script .sh eseguiti: $nsh, file .sql applicati: $nsql, falliti: $nfail"
+((SKIPPED_ROWS>0)) && warn "$SKIPPED_ROWS collegamenti template-campo saltati perche' puntano a oggetti inesistenti nella libreria originale (dettagli: $LOG)"
 ((nfail>0)) && warn "falliti: ${failed[*]}  (dettagli: $LOG)"
 
 # ------------------------------------------------------------- [5] basket
@@ -144,7 +164,19 @@ for pass in 1 2 3 4; do
     echo "=== basket pass $pass: $f" >>"$LOG"
     out=$(icingacli director basket restore <"$f" 2>&1); rc=$?
     echo "$out" >>"$LOG"
-    if ((rc==0)); then unset 'WHY[$f]'; else next+=("$f"); WHY[$f]="$out"; fi
+    if ((rc==0)); then unset 'WHY[$f]'; else
+      next+=("$f"); WHY[$f]="$out"
+      # Alcuni basket assegnano host/servizi a gruppi che non vengono definiti da nessuna parte
+      # (es. "linux servers", "tsm-server"): si creano al volo e il basket si riprova alla passata dopo.
+      while IFS= read -r g; do
+        [[ -n $g ]] || continue
+        for kind in hostgroup servicegroup; do
+          icingacli director "$kind" exists "$g" 2>&1 | grep -q "does not exist" \
+            && icingacli director "$kind" create --json "{\"object_name\":\"$g\",\"object_type\":\"object\"}" >>"$LOG" 2>&1
+        done
+        echo "     creato il gruppo mancante '$g'" | tee -a "$LOG" >/dev/null
+      done < <(sed -n 's/.*The group "\([^"]*\)" doesn.t exist.*/\1/p' <<<"$out" | sort -u)
+    fi
   done
   pending=("${next[@]}")
   ((${#pending[@]}==0)) && break
@@ -174,7 +206,7 @@ copy_plugin() { # nome
   return 1
 }
 copy_plugin check_mem.pl            || warn "check_mem.pl non trovato nel repo"
-copy_plugin check_interfaces        || warn "check_interfaces non trovato nel repo"
+copy_plugin check_interfaces        || warn "check_interfaces: il repo contiene solo binari per RHEL/CentOS (non usabili su Debian): va compilato o installato a mano"
 copy_plugin check_interface_table_v3t.pl || true
 [[ -f $BASE/check_esxi_hardware/check_esxi_hardware.py ]] && install -m 0755 "$BASE/check_esxi_hardware/check_esxi_hardware.py" "$PLUGDIR/check_esxi_hardware"
 missing=()
@@ -187,8 +219,32 @@ grep -qE '^const PluginContribDir' /etc/icinga2/constants.conf 2>/dev/null \
 
 # ----------------------------------------------------------- [7] deploy
 info "[7/7] Deploy configurazione"
-if icingacli director config deploy >>"$LOG" 2>&1; then ok "deploy eseguito"
-else warn "deploy non riuscito: verificare da UI (Director > Activity log)"; fi
+# Bug di Director su PostgreSQL: se il pacchetto "director" non ha ancora nessuno stage attivo (primo
+# deploy in assoluto) il deploy fallisce con "bind message supplies 0 parameters". Si crea quindi
+# prima uno stage iniziale vuoto tramite l'API di Icinga 2 e si aspetta che diventi attivo.
+CRED_FILE=${CRED_FILE:-/root/icinga-credentials.txt}
+if [[ -r $CRED_FILE ]]; then
+  # shellcheck disable=SC1090
+  API_ROOT_PASS=$(. "$CRED_FILE"; echo "${API_ROOT_PASS:-}")
+  api() { curl -ks -u "root:$API_ROOT_PASS" -H 'Accept: application/json' "$@"; }
+  if api https://127.0.0.1:5665/v1/config/packages | grep -Eq '"active-stage":"","name":"director"'; then
+    echo "stage iniziale del pacchetto director" >>"$LOG"
+    api -X POST https://127.0.0.1:5665/v1/config/stages/director \
+      -d '{"files":{"zones.d/director-global/icingacarra-init.conf":"// stage iniziale (evita il bug del primo deploy su PostgreSQL)\n"}}' >>"$LOG" 2>&1 || true
+    for _ in $(seq 1 30); do
+      api https://127.0.0.1:5665/v1/config/packages | grep -Eq '"active-stage":"","name":"director"' || break; sleep 2
+    done
+  fi
+else
+  warn "$CRED_FILE non leggibile: salto la preparazione dello stage iniziale"
+fi
+deployed=0
+for attempt in 1 2 3 4; do
+  if icingacli director config deploy >>"$LOG" 2>&1; then deployed=1; break; fi
+  sleep 8     # "ongoing package update in progress": si riprova
+done
+if ((deployed)); then ok "deploy eseguito"
+else warn "deploy non riuscito: verificare da UI (Director > Activity log) o in $LOG"; fi
 
 cat <<EOF
 

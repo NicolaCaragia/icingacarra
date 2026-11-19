@@ -102,6 +102,12 @@ sudo ./icinga-theme.sh --remove   # torna al tema Icinga
 | `There is no such module or command: 'setup'` | le versioni recenti di Icinga Web 2 non hanno piu' il modulo `setup`: la configurazione Apache viene scritta a mano |
 | Interfaccia web `404` | configurazione Apache non attiva: `a2enmod rewrite && a2enconf icingaweb2 && systemctl restart apache2` |
 | Template senza campi personalizzati | l'import SQL dei campi e' fallito: dettagli in `/var/log/icinga-templates.log` |
+| Il primo deploy di Director fallisce con "bind message supplies 0 parameters" | bug di Director su PostgreSQL quando non c'e' ancora uno stage attivo: `icinga-templates.sh` crea prima uno stage iniziale vuoto tramite l'API di Icinga 2 |
+| `check_interfaces`, `check_wmi_plus`, `check_oracle_health`, ... mancanti | sono plugin esterni non inclusi nel repo di origine (per `check_interfaces` solo binari RHEL): vanno installati a mano, e i basket che li usano restano non importati |
+
+## Collaudo
+
+L'installazione completa (`runsetup.sh`, con template e tema) e' stata provata da zero su **Debian 13 (WSL2, systemd)**: servizi attivi, interfaccia web raggiungibile, kickstart e primo deploy di Director riusciti, 16 template host, 95 template servizio, 10 service set, 269 comandi, 242 campi dati, tema attivo. Rieseguendo `icinga-templates.sh` il risultato non cambia. Non provati: Ubuntu, Debian 12, Vagrant e `proxmox/create-vm.sh`.
 
 ## Sicurezza
 
