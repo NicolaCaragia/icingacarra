@@ -1,6 +1,6 @@
 # icinga-pgsql
 
-Installazione guidata di **Icinga** con database **PostgreSQL**, pronta all'uso, su una VM (o su qualsiasi server Debian/Ubuntu).
+Installazione guidata di **Icinga** con database **PostgreSQL**, pronta all'uso, su una VM (o su qualsiasi server Debian/Ubuntu), con una **libreria di template Director** gia' importata.
 
 Componenti installati e configurati (seguendo la documentazione dei repository GitHub ufficiali Icinga):
 
@@ -11,6 +11,7 @@ Componenti installati e configurati (seguendo la documentazione dei repository G
 | Icinga Web 2 | database `icingaweb2` su PostgreSQL, utente admin creato senza wizard |
 | Icinga DB Web | modulo abilitato, command transport verso l'API |
 | Icinga Director | database `director` su PostgreSQL, kickstart e daemon `icinga-director` |
+| Libreria di template | comandi, template host/servizio, campi dati e basket di [zampat/icinga2-monitoring-templates](https://github.com/zampat/icinga2-monitoring-templates) (senza NetEye) |
 | PostgreSQL | locale (predefinito) oppure un server esistente |
 
 Sistemi supportati: Debian 12/13, Ubuntu 22.04/24.04 (RAM consigliata: 2 GB o piu').
@@ -18,14 +19,16 @@ Sistemi supportati: Debian 12/13, Ubuntu 22.04/24.04 (RAM consigliata: 2 GB o pi
 ## Uso su un server o VM esistente
 
 ```bash
-git clone <URL-del-repo> icinga-pgsql && cd icinga-pgsql
+git clone https://github.com/NicolaCaragia/icingacarra.git icinga-pgsql && cd icinga-pgsql
 sudo ./runsetup.sh          # guidato: FQDN, fuso orario, admin web, PostgreSQL locale/remoto
 sudo ./runsetup.sh --yes    # senza domande (valori predefiniti)
 ```
 
-Parametri preimpostabili via ambiente: `ICINGA_FQDN`, `TIMEZONE`, `WEB_ADMIN_USER`, `WEB_ADMIN_PASS`, `PG_LOCAL=0 PG_HOST PG_PORT PG_ADMIN_USER PG_ADMIN_PASS`.
+`runsetup.sh` e `icinga-templates.sh` devono restare nella stessa cartella (se manca, `runsetup.sh` prova a scaricarlo da GitHub).
 
-Al termine: `http://<ip>/icingaweb2`. Le password generate sono in `/root/icinga-credentials.txt` (permessi 600), il log in `/var/log/icinga-setup.log`. Lo script e' rieseguibile.
+Parametri preimpostabili via ambiente: `ICINGA_FQDN`, `TIMEZONE`, `WEB_ADMIN_USER`, `WEB_ADMIN_PASS`, `PG_LOCAL=0 PG_HOST PG_PORT PG_ADMIN_USER PG_ADMIN_PASS`, `WITH_TEMPLATES=0` (salta la libreria di template).
+
+Al termine: `http://<ip>/icingaweb2`. Le password generate sono in `/root/icinga-credentials.txt` (permessi 600), il log in `/var/log/icinga-setup.log` (template: `/var/log/icinga-templates.log`). Gli script sono rieseguibili.
 
 ## VM con Vagrant
 
@@ -44,8 +47,35 @@ Interfaccia su `http://localhost:8080/icingaweb2`. Credenziali: `vagrant ssh -c 
 4. Icinga 2, API, Redis, feature `icingadb`
 5. Daemon Icinga DB con schema PostgreSQL
 6. Icinga Web 2 + Icinga DB Web su Apache/PHP, utente admin
-7. Director: migrazione, kickstart, servizio systemd
+7. Director: migrazione, kickstart (con l'endpoint corretto e ritentativi), servizio systemd
 8. Verifica dei servizi e riepilogo
+9. Libreria di template Director e plugin (`icinga-templates.sh`)
+
+Prima di iniziare attende la fine di cloud-init e il lock di apt, e controlla che DNS e rete funzionino (con un messaggio chiaro se non e' cosi').
+
+## Libreria di template (icinga-templates.sh)
+
+Si puo' lanciare anche da solo, dopo l'installazione: `sudo ./icinga-templates.sh`. Importa da [zampat/icinga2-monitoring-templates](https://github.com/zampat/icinga2-monitoring-templates) e [zampat/neteye4](https://github.com/zampat/neteye4) (i repo vengono scaricati in `/opt/icinga-templates`):
+
+1. dipendenze (`snmp`, plugin Debian, `dos2unix`, ...);
+2. campi dati e liste di Director: il file SQL originale e' per MariaDB e viene convertito al volo per PostgreSQL;
+3. comandi, template host/servizio, periodi, notifiche: gli script `.sh` originali, eseguiti con `bash` (usano `[[ ]]`);
+4. i basket di `baskets/monitoring_templates` (ethernetbox, ibm, linux, microsoft, network_traffic, oracle, sap, vmware), in piu' passate per risolvere le dipendenze. Si saltano i file che non sono basket Director (dashboard Grafana) e i duplicati. Per ogni basket non importato lo script dice il motivo (comando o template mancante);
+5. plugin copiati in `/usr/lib/nagios/plugins` e `PluginContribDir` impostato; alla fine elenca i plugin ancora da installare a mano (`check_vmware_api`, `check_nwc_health`, ...);
+6. deploy della configurazione.
+
+Variabili: `WITH_NETEYE=1` (importa anche i template NetEye, inutili senza NetEye), `BASKET_DIRS="linux vmware"` (limita le cartelle di basket), `DIRECTOR_DB` (nome del database Director).
+
+## Problemi noti e soluzioni
+
+| Sintomo | Causa e soluzione |
+|---|---|
+| `Could not get lock /var/lib/apt/lists/lock` | cloud-init sta ancora installando pacchetti: lo script ora attende da solo (fino a 5 minuti) |
+| `DNS non funzionante` | la VM non risolve i nomi: imposta il DNS (su Proxmox `qm set <vmid> --nameserver 1.1.1.1`) |
+| Il Director mostra il wizard "Kickstart" | l'endpoint non coincideva con il nome del nodo Icinga 2: ora si usa `NodeName`; si puo' rifare con `icingacli director kickstart run` |
+| `There is no such module or command: 'setup'` | le versioni recenti di Icinga Web 2 non hanno piu' il modulo `setup`: la configurazione Apache viene scritta a mano |
+| Interfaccia web `404` | configurazione Apache non attiva: `a2enmod rewrite && a2enconf icingaweb2 && systemctl restart apache2` |
+| Template senza campi personalizzati | l'import SQL dei campi e' fallito: dettagli in `/var/log/icinga-templates.log` |
 
 ## Sicurezza
 

@@ -24,7 +24,10 @@ Vagrant.configure("2") do |config|
 
   # Niente cartelle sincronizzate (compatibile con Hyper-V): si copia lo script.
   config.vm.synced_folder ".", "/vagrant", disabled: true
+  # runsetup.sh e icinga-templates.sh devono stare nella stessa cartella: il secondo (step 9)
+  # installa la libreria di template Director e i plugin.
   config.vm.provision "file", source: "runsetup.sh", destination: "/tmp/runsetup.sh"
+  config.vm.provision "file", source: "icinga-templates.sh", destination: "/tmp/icinga-templates.sh"
   config.vm.provision "shell", privileged: true, inline: <<-SHELL
     ICINGA_FQDN=icinga.local bash /tmp/runsetup.sh --yes
   SHELL

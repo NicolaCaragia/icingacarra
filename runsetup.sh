@@ -11,11 +11,12 @@
 #   sudo ./runsetup.sh --help
 # Ogni parametro puo' essere preimpostato via variabile d'ambiente, es.:
 #   sudo ICINGA_FQDN=mon.example.org WEB_ADMIN_PASS=segreta ./runsetup.sh --yes
+#   sudo WITH_TEMPLATES=0 ./runsetup.sh   # salta la libreria di template (step 9, icinga-templates.sh)
 # Lo script e' rieseguibile: le password vengono salvate in $CRED_FILE.
 # =============================================================================
 set -Eeuo pipefail
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 CRED_FILE="${CRED_FILE:-/root/icinga-credentials.txt}"
 LOG_FILE="${LOG_FILE:-/var/log/icinga-setup.log}"
 ASSUME_YES=0
@@ -29,7 +30,7 @@ warn() { echo "${c_ylw}WARN${c_off} $*" >&2; }
 die()  { echo "${c_red}ERRORE${c_off} $*" >&2; exit 1; }
 trap 'die "fallito alla riga $LINENO (comando: $BASH_COMMAND). Log: $LOG_FILE"' ERR
 
-usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
+usage() { sed -n '2,/^set -/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0; }
 
 # ask VAR "Domanda" "default"  -> usa env se gia' valorizzata
 ask() {
@@ -65,7 +66,10 @@ save_creds() {
   chmod 600 "$CRED_FILE"
 }
 
-apt_install() { DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$@" >>"$LOG_FILE" 2>&1; }
+# Attende fino a 5 minuti il blocco di apt/dpkg (su una VM appena creata, cloud-init sta ancora
+# installando pacchetti e tiene il lock: senza attesa apt fallisce con "Could not get lock").
+APT_OPTS=(-o DPkg::Lock::Timeout=300 -o Acquire::Retries=3)
+apt_install() { DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" install -y -qq "$@" >>"$LOG_FILE" 2>&1; }
 
 # psql come amministratore (locale = utente postgres, remoto = PG_ADMIN_*)
 psql_admin() {
@@ -92,6 +96,12 @@ done
 [[ $EUID -eq 0 ]] || die "eseguire come root (sudo ./runsetup.sh)"
 mkdir -p "$(dirname "$LOG_FILE")"; : >>"$LOG_FILE"
 
+# Su una VM appena creata cloud-init puo' ancora essere al lavoro (e tenere il lock di apt): lo si attende.
+if command -v cloud-init >/dev/null 2>&1; then
+  info "Attendo il termine di cloud-init"
+  timeout 600 cloud-init status --wait >>"$LOG_FILE" 2>&1 || true
+fi
+
 # Riutilizza le credenziali di una esecuzione precedente (senza sovrascrivere l'ambiente)
 if [[ -f $CRED_FILE ]]; then
   info "Trovato $CRED_FILE: riutilizzo i valori precedenti"
@@ -113,7 +123,8 @@ CODENAME=${VERSION_CODENAME:-}
 [[ -n $CODENAME ]] || die "VERSION_CODENAME non trovato in /etc/os-release"
 mem_mb=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
 (( mem_mb >= 1800 )) || warn "RAM ${mem_mb} MB: consigliati almeno 2 GB"
-curl -fsI https://packages.icinga.com >/dev/null || die "packages.icinga.com non raggiungibile"
+getent hosts packages.icinga.com >/dev/null || die "DNS non funzionante: packages.icinga.com non si risolve (controlla /etc/resolv.conf, il gateway e la rete della VM)"
+curl -fsI https://packages.icinga.com >/dev/null || die "packages.icinga.com non raggiungibile (controlla rete, gateway ed eventuale proxy)"
 
 # ---------------------------------------------------------- domande guidate --
 echo
@@ -159,9 +170,9 @@ confirm "Procedere con l'installazione?" y || die "annullato dall'utente"
 save_creds
 
 # ------------------------------------------------------ repository Icinga ----
-info "[1/8] Repository Icinga"
+info "[1/9] Repository Icinga"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq >>"$LOG_FILE" 2>&1
+apt-get "${APT_OPTS[@]}" update -qq >>"$LOG_FILE" 2>&1
 apt_install apt-transport-https wget curl gnupg ca-certificates openssl
 KEYRING=/usr/share/keyrings/icinga-archive-keyring.gpg
 if [[ ! -f $KEYRING ]]; then
@@ -174,11 +185,11 @@ cat > "/etc/apt/sources.list.d/${CODENAME}-icinga.list" <<EOF
 deb [signed-by=$KEYRING] $REPO_URL icinga-${CODENAME} main
 deb-src [signed-by=$KEYRING] $REPO_URL icinga-${CODENAME} main
 EOF
-apt-get update -qq >>"$LOG_FILE" 2>&1
+apt-get "${APT_OPTS[@]}" update -qq >>"$LOG_FILE" 2>&1
 ok "repository configurato"
 
 # ------------------------------------------------------------ PostgreSQL ----
-info "[2/8] PostgreSQL"
+info "[2/9] PostgreSQL"
 if [[ $PG_LOCAL == 1 ]]; then
   apt_install postgresql postgresql-contrib
   systemctl enable --now postgresql >>"$LOG_FILE" 2>&1
@@ -199,14 +210,14 @@ create_db() { # create_db db user pass
   fi
   psql_admin -d "$db" -c "CREATE EXTENSION IF NOT EXISTS citext"
 }
-info "[3/8] Database icingadb, icingaweb2, director"
+info "[3/9] Database icingadb, icingaweb2, director"
 create_db icingadb   icingadb   "$DB_ICINGADB_PASS"
 create_db icingaweb2 icingaweb2 "$DB_WEB_PASS"
 create_db director   director   "$DB_DIRECTOR_PASS"
 ok "database creati"
 
 # --------------------------------------------------------------- Icinga 2 ----
-info "[4/8] Icinga 2 + plugin + Redis (Icinga DB)"
+info "[4/9] Icinga 2 + plugin + Redis (Icinga DB)"
 apt_install icinga2 monitoring-plugins icingadb-redis
 systemctl enable --now icingadb-redis >>"$LOG_FILE" 2>&1
 if [[ ! -e /etc/icinga2/features-enabled/api.conf ]]; then
@@ -230,7 +241,7 @@ systemctl restart icinga2
 ok "Icinga 2 attivo (API su :5665)"
 
 # -------------------------------------------------------------- Icinga DB ----
-info "[5/8] Daemon Icinga DB"
+info "[5/9] Daemon Icinga DB"
 apt_install icingadb
 if [[ $(psql_user icingadb icingadb "$DB_ICINGADB_PASS" -tAc "SELECT to_regclass('public.host') IS NOT NULL") != t ]]; then
   psql_user icingadb icingadb "$DB_ICINGADB_PASS" -f /usr/share/icingadb/schema/pgsql/schema.sql >>"$LOG_FILE" 2>&1
@@ -259,7 +270,7 @@ systemctl restart icingadb
 ok "icingadb attivo"
 
 # ------------------------------------------------------------ Icinga Web 2 ---
-info "[6/8] Icinga Web 2 + Icinga DB Web + Director (Apache/PHP)"
+info "[6/9] Icinga Web 2 + Icinga DB Web + Director (Apache/PHP)"
 apt_install apache2 libapache2-mod-php php-pgsql icingaweb2 icingacli icingadb-web icinga-director
 for ini in /etc/php/*/apache2/conf.d; do
   echo "date.timezone = $TIMEZONE" > "$ini/99-icinga.ini"
@@ -347,8 +358,31 @@ SQL
 for m in icingadb director; do icingacli module enable "$m" >>"$LOG_FILE" 2>&1 || true; done
 
 # Apache
-icingacli setup config webserver apache --document-root /usr/share/icingaweb2/public \
-  > /etc/apache2/conf-available/icingaweb2.conf
+if icingacli setup --help >/dev/null 2>&1; then
+  icingacli setup config webserver apache --document-root /usr/share/icingaweb2/public \
+    > /etc/apache2/conf-available/icingaweb2.conf
+else
+  # modulo "setup" assente nelle versioni recenti: configurazione scritta a mano
+  cat > /etc/apache2/conf-available/icingaweb2.conf <<'APACHE'
+Alias /icingaweb2 "/usr/share/icingaweb2/public"
+
+<Directory "/usr/share/icingaweb2/public">
+    Options SymLinksIfOwnerMatch
+    AllowOverride None
+    SetEnv ICINGAWEB_CONFIGDIR "/etc/icingaweb2"
+    EnableSendfile Off
+    Require all granted
+    DirectoryIndex index.php
+    RewriteEngine on
+    RewriteBase /icingaweb2/
+    RewriteCond %{REQUEST_FILENAME} -s [OR]
+    RewriteCond %{REQUEST_FILENAME} -l [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^.*$ - [NC,L]
+    RewriteRule ^.*$ index.php [NC,L]
+</Directory>
+APACHE
+fi
 echo 'RedirectMatch ^/$ /icingaweb2' > /etc/apache2/conf-available/icingaweb2-redirect.conf
 a2enmod rewrite >>"$LOG_FILE" 2>&1
 a2enconf icingaweb2 icingaweb2-redirect >>"$LOG_FILE" 2>&1
@@ -357,9 +391,29 @@ systemctl restart apache2
 ok "Icinga Web 2 configurato"
 
 # --------------------------------------------------------------- Director ----
-info "[7/8] Director (migrazione, kickstart, daemon)"
+info "[7/9] Director (migrazione, kickstart, daemon)"
 icingacli director migration run >>"$LOG_FILE" 2>&1
-icingacli director kickstart run >>"$LOG_FILE" 2>&1 || warn "kickstart non riuscito: eseguirlo dalla UI di Director"
+
+# Il kickstart parla con l'API di Icinga 2: l'endpoint deve avere ESATTAMENTE il nome dell'oggetto
+# Endpoint di Icinga 2 (NodeName), che non coincide per forza con l'FQDN scelto per l'interfaccia web
+# (es. NodeName "icinga" ma FQDN "icinga.lan": con il nome sbagliato il kickstart fallisce e Director
+# mostra il wizard "Kickstart" nella UI). Si legge quindi NodeName e si aspetta che l'API risponda.
+ICINGA_NODENAME=$(icinga2 variable get NodeName 2>/dev/null || true)
+ICINGA_NODENAME=${ICINGA_NODENAME:-$(hostname -f 2>/dev/null || hostname)}
+sed -i "s/^endpoint = .*/endpoint = \"$ICINGA_NODENAME\"/" "$ETC/modules/director/kickstart.ini"
+for _ in $(seq 1 30); do
+  curl -ks -o /dev/null -u "root:$API_ROOT_PASS" https://127.0.0.1:5665/v1/status && break; sleep 2
+done
+kick_ok=0
+for attempt in 1 2 3; do
+  if icingacli director kickstart run >>"$LOG_FILE" 2>&1; then kick_ok=1; break; fi
+  sleep 5
+done
+if (( kick_ok )) && [[ $(icingacli director command exists icinga 2>&1) != *"does not exist"* ]]; then
+  ok "kickstart eseguito (ITL e oggetti di Icinga 2 importati)"
+else
+  warn "kickstart non riuscito (vedi $LOG_FILE): endpoint '$ICINGA_NODENAME', API root su 127.0.0.1:5665. Si puo' rifare dalla UI di Director."
+fi
 if ! getent passwd icingadirector >/dev/null; then
   useradd -r -g icingaweb2 -d /var/lib/icingadirector -s /bin/false icingadirector
 fi
@@ -372,7 +426,7 @@ systemctl enable --now icinga-director.service >>"$LOG_FILE" 2>&1
 ok "Director pronto"
 
 # ----------------------------------------------------------- verifiche ------
-info "[8/8] Verifica servizi"
+info "[8/9] Verifica servizi"
 fail=0
 for s in postgresql icingadb-redis icinga2 icingadb apache2 icinga-director; do
   [[ $s == postgresql && $PG_LOCAL != 1 ]] && continue
@@ -380,6 +434,22 @@ for s in postgresql icingadb-redis icinga2 icingadb apache2 icinga-director; do
 done
 curl -fsL -o /dev/null http://127.0.0.1/icingaweb2/authentication/login && ok "interfaccia web raggiungibile" || { warn "interfaccia web non raggiungibile"; fail=1; }
 save_creds
+
+# ------------------------------------------------------ template Director ----
+info "[9/9] Template Director e plugin (libreria zampat)"
+if [[ "${WITH_TEMPLATES:-1}" == 1 ]]; then
+  TPL_SCRIPT="$(dirname "$(readlink -f "$0")")/icinga-templates.sh"
+  if [[ ! -f $TPL_SCRIPT ]]; then
+    TPL_SCRIPT=/tmp/icinga-templates.sh
+    curl -fsSL -o "$TPL_SCRIPT" https://raw.githubusercontent.com/NicolaCaragia/icingacarra/main/icinga-templates.sh \
+      || warn "icinga-templates.sh non trovato: copialo accanto a runsetup.sh"
+  fi
+  if [[ -f $TPL_SCRIPT ]]; then
+    bash "$TPL_SCRIPT" || warn "template non installati del tutto (vedi /var/log/icinga-templates.log)"
+  fi
+else
+  warn "WITH_TEMPLATES=0: template saltati"
+fi
 
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 cat <<EOF
