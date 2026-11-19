@@ -251,8 +251,16 @@ if [[ -n $NODE ]]; then
     # host gia' esistente (esecuzione precedente) ma senza address6: ping6 non avrebbe l'indirizzo
     icingacli director host set "$NODE" --address6 "::1" >>"$LOG" 2>&1 || true
   fi
+  LOCAL_NEW=0; LOCAL_FAIL=0; LOCAL_ERR=""
   add_local_check() { # nome comando [attributi JSON aggiuntivi]
-    icingacli director service create --json "{\"object_name\":\"$1\",\"object_type\":\"object\",\"host\":\"$NODE\",\"imports\":[\"generic-service\"],\"check_command\":\"$2\"${3:+,$3}}" >>"$LOG" 2>&1 || true
+    local out
+    if out=$(icingacli director service create --json "{\"object_name\":\"$1\",\"object_type\":\"object\",\"host\":\"$NODE\",\"imports\":[\"generic-service\"],\"check_command\":\"$2\"${3:+,$3}}" 2>&1); then
+      LOCAL_NEW=$((LOCAL_NEW+1))
+    elif grep -q "DuplicateKeyException" <<<"$out"; then :     # gia' presente da una esecuzione precedente
+    else
+      LOCAL_FAIL=$((LOCAL_FAIL+1)); echo "controllo '$1': $out" >>"$LOG"
+      [[ -n $LOCAL_ERR ]] || LOCAL_ERR="'$1': $(grep -m1 ERROR <<<"$out" | sed 's/.*with message: //' | cut -c1-200)"
+    fi
   }
   add_local_check ping4 ping4
   add_local_check ping6 ping6
@@ -266,6 +274,11 @@ if [[ -n $NODE ]]; then
   add_local_check users users
   add_local_check apt   apt '"check_interval":"3600"'
   add_local_check icinga icinga '"check_interval":"60"'
+  if ((LOCAL_FAIL>0)); then
+    warn "controlli del server '$NODE': $LOCAL_FAIL non creati. Primo errore: $LOCAL_ERR"
+  else
+    ok "controlli del server '$NODE' in Director (nuovi: $LOCAL_NEW, gia' presenti: $((12-LOCAL_NEW)))"
+  fi
 fi
 # Bug di Director su PostgreSQL: se il pacchetto "director" non ha ancora nessuno stage attivo (primo
 # deploy in assoluto) il deploy fallisce con "bind message supplies 0 parameters". Si crea quindi
