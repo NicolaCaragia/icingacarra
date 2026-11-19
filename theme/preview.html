@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Anteprima tema icingacarra</title>
+<!-- Anteprima approssimata del tema (le stesse regole di IcingaCarra.less, su un'interfaccia simulata).
+     Se manca img/icingacarra/background.jpg si vede uno sfondo segnaposto generato. -->
+<style>
+  :root{ --body:#282E39; --menu:#06062B; --text:#e8edf3; --sub:#9aa7b8; --line:#3a4352;
+         --ok:#2fd27f; --warn:#f5b73b; --crit:#ff5b6b; --blue:#2b95ff; }
+  *{box-sizing:border-box}
+  body{margin:0; background:#111; color:var(--text); font:14px/1.5 "Segoe UI",Roboto,Arial,sans-serif;}
+  h2.label{margin:0; padding:14px 18px 6px; font:600 12px/1 "Segoe UI",Arial,sans-serif; letter-spacing:.08em; text-transform:uppercase; color:#8aa0bd; background:#111;}
+  .bg{
+    background-image:url('img/icingacarra/background.jpg'), url('img/icingacarra/background-placeholder.svg');
+    background-size:cover; background-position:center; background-repeat:no-repeat;
+  }
+  /* ---------------- pagina di accesso ---------------- */
+  .login{height:520px; display:flex; align-items:center; justify-content:center;}
+  .login-form{width:420px; padding:28px 48px 34px; background:rgba(6,6,43,.72); border-radius:6px;
+    box-shadow:0 0 0 1px rgba(80,170,255,.18), 0 18px 50px rgba(0,0,0,.45); text-align:center;}
+  .login-form .logo{height:177px; background:url('img/icingacarra/logo-big.svg') center bottom/contain no-repeat; margin-bottom:18px;}
+  .login-form input{width:100%; margin:6px 0; padding:10px 12px; border-radius:4px; border:1px solid var(--line); background:rgba(40,46,57,.9); color:var(--text); font:inherit;}
+  .login-form button{width:100%; margin-top:10px; padding:10px; border:0; border-radius:4px; background:var(--blue); color:#fff; font:600 14px "Segoe UI",Arial,sans-serif;}
+  /* ---------------- interfaccia principale ---------------- */
+  .app{display:flex; height:560px;}
+  .sidebar{width:230px; background:rgba(6,6,43,.82); display:flex; flex-direction:column;}
+  .sidebar .logo{height:6em; padding:1.25em; background:rgba(6,6,43,.82);}
+  .sidebar .logo i{display:block; height:100%; background:url('img/icingacarra/logo.svg') center/contain no-repeat;}
+  .sidebar ul{list-style:none; margin:0; padding:6px 0;}
+  .sidebar li{padding:9px 20px; color:#c5cfdd;}
+  .sidebar li.on{background:rgba(43,149,255,.22); color:#fff; box-shadow:inset 3px 0 0 var(--blue);}
+  .main{flex:1; display:flex; flex-direction:column; min-width:0;}
+  .tabs{background:rgba(6,6,43,.82); padding:0 12px; display:flex; gap:2px;}
+  .tabs span{padding:10px 16px; color:#aebbd0;} .tabs .on{color:#fff; background:rgba(40,46,57,.9);}
+  .content{flex:1; margin:0; padding:18px; background:rgba(40,46,57,.78);}
+  table{width:100%; border-collapse:collapse;}
+  th{ text-align:left; color:var(--sub); font-weight:600; padding:8px 10px; border-bottom:1px solid var(--line);}
+  td{padding:9px 10px; border-bottom:1px solid rgba(255,255,255,.07);}
+  .st{display:inline-block; min-width:70px; text-align:center; padding:1px 8px; border-radius:3px; font-size:12px; font-weight:700; color:#0b1220;}
+  .ok{background:var(--ok)} .wa{background:var(--warn)} .cr{background:var(--crit)}
+  /* sidebar compressa */
+  .collapsed .sidebar{width:64px;}
+  .collapsed .sidebar .logo{height:3em; padding:.25em .125em;}
+  .collapsed .sidebar .logo i{background-image:url('img/icingacarra/logo-compact.svg');}
+  .collapsed .sidebar li{padding:9px 0; text-align:center; font-size:0;} .collapsed .sidebar li:before{content:"●"; font-size:12px; color:#7f93b0;}
+  .collapsed .sidebar li.on:before{color:var(--blue);}
+  .note{padding:10px 18px 22px; color:#8aa0bd; font:12.5px/1.5 "Segoe UI",Arial,sans-serif; background:#111;}
+</style>
+</head>
+<body>
+<h2 class="label">1 · Pagina di accesso</h2>
+<div class="bg login">
+  <div class="login-form">
+    <div class="logo"></div>
+    <input placeholder="Utente" value="icingaadmin"><input type="password" placeholder="Password" value="••••••••">
+    <button>Accedi</button>
+  </div>
+</div>
+
+<h2 class="label">2 · Interfaccia (menu espanso)</h2>
+<div class="bg app">
+  <div class="sidebar"><div class="logo"><i></i></div>
+    <ul><li class="on">Panoramica</li><li>Host</li><li>Servizi</li><li>Director</li><li>Cronologia</li><li>Configurazione</li></ul></div>
+  <div class="main">
+    <div class="tabs"><span class="on">Servizi</span><span>Host</span><span>Problemi</span></div>
+    <div class="content">
+      <table>
+        <tr><th>Stato</th><th>Host</th><th>Servizio</th><th>Ultimo controllo</th></tr>
+        <tr><td><span class="st ok">OK</span></td><td>Switch01</td><td>ping4</td><td>1 min fa</td></tr>
+        <tr><td><span class="st wa">WARNING</span></td><td>Switch02</td><td>traffic-uplink</td><td>2 min fa</td></tr>
+        <tr><td><span class="st cr">CRITICAL</span></td><td>Switch03</td><td>snmp-interface</td><td>3 min fa</td></tr>
+        <tr><td><span class="st ok">OK</span></td><td>icinga.lan</td><td>disk</td><td>4 min fa</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<h2 class="label">3 · Menu compresso (solo icona)</h2>
+<div class="bg app collapsed" style="height:300px">
+  <div class="sidebar"><div class="logo"><i></i></div>
+    <ul><li class="on">Panoramica</li><li>Host</li><li>Servizi</li><li>Director</li></ul></div>
+  <div class="main">
+    <div class="tabs"><span class="on">Panoramica</span></div>
+    <div class="content"><table><tr><th>Host</th><th>Stato</th></tr><tr><td>Switch01</td><td><span class="st ok">UP</span></td></tr></table></div>
+  </div>
+</div>
+<div class="note">Anteprima approssimata: l'aspetto reale dipende dall'Icinga Web 2 installato. Lo sfondo qui sotto i pannelli
+è il segnaposto generato finché non c'è <code>img/icingacarra/background.jpg</code>.</div>
+</body>
+</html>

@@ -12,6 +12,7 @@
 # Ogni parametro puo' essere preimpostato via variabile d'ambiente, es.:
 #   sudo ICINGA_FQDN=mon.example.org WEB_ADMIN_PASS=segreta ./runsetup.sh --yes
 #   sudo WITH_TEMPLATES=0 ./runsetup.sh   # salta la libreria di template (step 9, icinga-templates.sh)
+#   sudo WITH_THEME=0 ./runsetup.sh       # salta il tema icingacarra (step 10, icinga-theme.sh)
 # Lo script e' rieseguibile: le password vengono salvate in $CRED_FILE.
 # =============================================================================
 set -Eeuo pipefail
@@ -170,7 +171,7 @@ confirm "Procedere con l'installazione?" y || die "annullato dall'utente"
 save_creds
 
 # ------------------------------------------------------ repository Icinga ----
-info "[1/9] Repository Icinga"
+info "[1/10] Repository Icinga"
 export DEBIAN_FRONTEND=noninteractive
 apt-get "${APT_OPTS[@]}" update -qq >>"$LOG_FILE" 2>&1
 apt_install apt-transport-https wget curl gnupg ca-certificates openssl
@@ -189,7 +190,7 @@ apt-get "${APT_OPTS[@]}" update -qq >>"$LOG_FILE" 2>&1
 ok "repository configurato"
 
 # ------------------------------------------------------------ PostgreSQL ----
-info "[2/9] PostgreSQL"
+info "[2/10] PostgreSQL"
 if [[ $PG_LOCAL == 1 ]]; then
   apt_install postgresql postgresql-contrib
   systemctl enable --now postgresql >>"$LOG_FILE" 2>&1
@@ -210,14 +211,14 @@ create_db() { # create_db db user pass
   fi
   psql_admin -d "$db" -c "CREATE EXTENSION IF NOT EXISTS citext"
 }
-info "[3/9] Database icingadb, icingaweb2, director"
+info "[3/10] Database icingadb, icingaweb2, director"
 create_db icingadb   icingadb   "$DB_ICINGADB_PASS"
 create_db icingaweb2 icingaweb2 "$DB_WEB_PASS"
 create_db director   director   "$DB_DIRECTOR_PASS"
 ok "database creati"
 
 # --------------------------------------------------------------- Icinga 2 ----
-info "[4/9] Icinga 2 + plugin + Redis (Icinga DB)"
+info "[4/10] Icinga 2 + plugin + Redis (Icinga DB)"
 apt_install icinga2 monitoring-plugins icingadb-redis
 systemctl enable --now icingadb-redis >>"$LOG_FILE" 2>&1
 if [[ ! -e /etc/icinga2/features-enabled/api.conf ]]; then
@@ -241,7 +242,7 @@ systemctl restart icinga2
 ok "Icinga 2 attivo (API su :5665)"
 
 # -------------------------------------------------------------- Icinga DB ----
-info "[5/9] Daemon Icinga DB"
+info "[5/10] Daemon Icinga DB"
 apt_install icingadb
 if [[ $(psql_user icingadb icingadb "$DB_ICINGADB_PASS" -tAc "SELECT to_regclass('public.host') IS NOT NULL") != t ]]; then
   psql_user icingadb icingadb "$DB_ICINGADB_PASS" -f /usr/share/icingadb/schema/pgsql/schema.sql >>"$LOG_FILE" 2>&1
@@ -270,7 +271,7 @@ systemctl restart icingadb
 ok "icingadb attivo"
 
 # ------------------------------------------------------------ Icinga Web 2 ---
-info "[6/9] Icinga Web 2 + Icinga DB Web + Director (Apache/PHP)"
+info "[6/10] Icinga Web 2 + Icinga DB Web + Director (Apache/PHP)"
 apt_install apache2 libapache2-mod-php php-pgsql icingaweb2 icingacli icingadb-web icinga-director
 for ini in /etc/php/*/apache2/conf.d; do
   echo "date.timezone = $TIMEZONE" > "$ini/99-icinga.ini"
@@ -391,7 +392,7 @@ systemctl restart apache2
 ok "Icinga Web 2 configurato"
 
 # --------------------------------------------------------------- Director ----
-info "[7/9] Director (migrazione, kickstart, daemon)"
+info "[7/10] Director (migrazione, kickstart, daemon)"
 icingacli director migration run >>"$LOG_FILE" 2>&1
 
 # Il kickstart parla con l'API di Icinga 2: l'endpoint deve avere ESATTAMENTE il nome dell'oggetto
@@ -426,7 +427,7 @@ systemctl enable --now icinga-director.service >>"$LOG_FILE" 2>&1
 ok "Director pronto"
 
 # ----------------------------------------------------------- verifiche ------
-info "[8/9] Verifica servizi"
+info "[8/10] Verifica servizi"
 fail=0
 for s in postgresql icingadb-redis icinga2 icingadb apache2 icinga-director; do
   [[ $s == postgresql && $PG_LOCAL != 1 ]] && continue
@@ -436,7 +437,7 @@ curl -fsL -o /dev/null http://127.0.0.1/icingaweb2/authentication/login && ok "i
 save_creds
 
 # ------------------------------------------------------ template Director ----
-info "[9/9] Template Director e plugin (libreria zampat)"
+info "[9/10] Template Director e plugin (libreria zampat)"
 if [[ "${WITH_TEMPLATES:-1}" == 1 ]]; then
   TPL_SCRIPT="$(dirname "$(readlink -f "$0")")/icinga-templates.sh"
   if [[ ! -f $TPL_SCRIPT ]]; then
@@ -449,6 +450,19 @@ if [[ "${WITH_TEMPLATES:-1}" == 1 ]]; then
   fi
 else
   warn "WITH_TEMPLATES=0: template saltati"
+fi
+
+# ------------------------------------------------------------------ tema ------
+info "[10/10] Tema icingacarra (logo e sfondo)"
+if [[ "${WITH_THEME:-1}" == 1 ]]; then
+  THEME_SCRIPT="$(dirname "$(readlink -f "$0")")/icinga-theme.sh"
+  if [[ -f $THEME_SCRIPT && -d "$(dirname "$THEME_SCRIPT")/theme" ]]; then
+    bash "$THEME_SCRIPT" || warn "tema non installato (vedi i messaggi sopra)"
+  else
+    warn "icinga-theme.sh o la cartella theme/ non trovati accanto a runsetup.sh: tema saltato"
+  fi
+else
+  warn "WITH_THEME=0: tema saltato"
 fi
 
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 177" role="img" aria-label="icingacarra">
+<title>icingacarra</title>
+<defs>
+  <linearGradient id="gI" gradientUnits="userSpaceOnUse" x1="130" y1="2" x2="229.2" y2="101.2">
+    <stop offset="0" stop-color="#5ee7ff"/>
+    <stop offset="1" stop-color="#2b95ff"/>
+  </linearGradient>
+</defs>
+<g stroke-linecap="round" stroke-linejoin="round">
+  <polygon points="179.60,14.40 147.38,33.00 147.38,70.20 179.60,88.80 211.82,70.20 211.82,33.00" fill="none" stroke="url(#gI)" stroke-opacity=".38" stroke-width="1.86"/>
+  <line x1="179.60" y1="51.60" x2="179.60" y2="14.40" stroke="url(#gI)" stroke-width="3.41"/>
+  <line x1="179.60" y1="51.60" x2="147.38" y2="33.00" stroke="url(#gI)" stroke-width="3.41"/>
+  <line x1="179.60" y1="51.60" x2="147.38" y2="70.20" stroke="url(#gI)" stroke-width="3.41"/>
+  <line x1="179.60" y1="51.60" x2="179.60" y2="88.80" stroke="url(#gI)" stroke-width="3.41"/>
+  <line x1="179.60" y1="51.60" x2="211.82" y2="70.20" stroke="url(#gI)" stroke-width="3.41"/>
+  <line x1="179.60" y1="51.60" x2="211.82" y2="33.00" stroke="url(#gI)" stroke-width="3.41"/>
+  <line x1="179.60" y1="29.90" x2="187.71" y2="19.52" stroke="url(#gI)" stroke-width="2.63"/>
+  <line x1="179.60" y1="29.90" x2="171.49" y2="19.52" stroke="url(#gI)" stroke-width="2.63"/>
+  <line x1="160.81" y1="40.75" x2="155.87" y2="28.53" stroke="url(#gI)" stroke-width="2.63"/>
+  <line x1="160.81" y1="40.75" x2="147.76" y2="42.58" stroke="url(#gI)" stroke-width="2.63"/>
+  <line x1="160.81" y1="62.45" x2="147.76" y2="60.62" stroke="url(#gI)" stroke-width="2.63"/>
+  <line x1="160.81" y1="62.45" x2="155.87" y2="74.67" stroke="url(#gI)" stroke-width="2.63"/>
+  <line x1="179.60" y1="73.30" x2="171.49" y2="83.68" stroke="url(#gI)" stroke-width="2.63"/>
+  <line x1="179.60" y1="73.30" x2="187.71" y2="83.68" stroke="url(#gI)" stroke-width="2.63"/>
+  <line x1="198.39" y1="62.45" x2="203.33" y2="74.67" stroke="url(#gI)" stroke-width="2.63"/>
+  <line x1="198.39" y1="62.45" x2="211.44" y2="60.62" stroke="url(#gI)" stroke-width="2.63"/>
+  <line x1="198.39" y1="40.75" x2="211.44" y2="42.58" stroke="url(#gI)" stroke-width="2.63"/>
+  <line x1="198.39" y1="40.75" x2="203.33" y2="28.53" stroke="url(#gI)" stroke-width="2.63"/>
+  <circle cx="179.60" cy="14.40" r="5.27" fill="#0b1c33" stroke="url(#gI)" stroke-width="2.79"/>
+  <circle cx="147.38" cy="33.00" r="5.27" fill="#0b1c33" stroke="url(#gI)" stroke-width="2.79"/>
+  <circle cx="147.38" cy="70.20" r="5.27" fill="#0b1c33" stroke="url(#gI)" stroke-width="2.79"/>
+  <circle cx="179.60" cy="88.80" r="5.27" fill="#0b1c33" stroke="url(#gI)" stroke-width="2.79"/>
+  <circle cx="211.82" cy="70.20" r="5.27" fill="#0b1c33" stroke="url(#gI)" stroke-width="2.79"/>
+  <circle cx="211.82" cy="33.00" r="5.27" fill="#0b1c33" stroke="url(#gI)" stroke-width="2.79"/>
+  <circle cx="179.60" cy="51.60" r="9.61" fill="url(#gI)"/>
+  <circle cx="179.60" cy="51.60" r="3.72" fill="#eaf8ff"/>
+</g>
+<text x="180" y="160" text-anchor="middle" font-family="'Segoe UI','Helvetica Neue','DejaVu Sans',Arial,sans-serif" font-size="44" textLength="280" lengthAdjust="spacingAndGlyphs"><tspan fill="#e8f4ff" font-weight="300">icinga</tspan><tspan fill="#4fd8ff" font-weight="700">carra</tspan></text>
+</svg>

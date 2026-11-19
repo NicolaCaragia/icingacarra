@@ -1,0 +1,54 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Tema "IcingaCarra" per Icinga Web 2: logo e sfondo personalizzati (al posto di quelli di Icinga).
+// Si installa con icinga-theme.sh in /usr/share/icingaweb2/public/css/themes/ e si attiva come tema
+// predefinito. Le immagini stanno in /usr/share/icingaweb2/public/img/icingacarra/.
+//
+// Il tema e' scuro (come il tema Icinga predefinito): non e' pensato per la modalita' chiara.
+
+// ---- Sfondo ovunque ---------------------------------------------------------------------------
+// Immagine fissa e a tutto schermo dietro a tutta l'interfaccia, anche nella pagina di accesso.
+#layout,
+#login {
+  background-image: url('../img/icingacarra/background.jpg');
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: cover;
+  background-attachment: fixed;
+}
+
+// Menu, schede e riquadro del logo: scuri ma un po' trasparenti, cosi' lo sfondo si intravede.
+#header-logo-container,
+#menu,
+#sidebar,
+.tabs {
+  background-color: fade(@menu-bg-color, 82%);
+}
+
+// Colonne dei contenuti: velo scuro per mantenere leggibili tabelle e testi sopra la rete.
+#main > .container {
+  background-color: fade(@body-bg-color, 78%);
+}
+
+// ---- Logo icingacarra -------------------------------------------------------------------------
+// Barra laterale (e menu mobile).
+#header-logo,
+#mobile-menu-logo {
+  background-image: url('../img/icingacarra/logo.svg');
+}
+
+// Barra laterale compressa: solo l'icona.
+#layout:not(.minimal-layout).sidebar-collapsed #header-logo {
+  background-image: url('../img/icingacarra/logo-compact.svg');
+}
+
+// Pagina di accesso.
+#icinga-logo,
+#icinga-logo.invert {
+  background-image: url('../img/icingacarra/logo-big.svg');
+}
+
+// Finestra "Informazioni su".
+#about .icinga-logo {
+  background-image: url('../img/icingacarra/logo.svg');
+}

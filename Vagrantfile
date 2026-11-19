@@ -28,6 +28,8 @@ Vagrant.configure("2") do |config|
   # installa la libreria di template Director e i plugin.
   config.vm.provision "file", source: "runsetup.sh", destination: "/tmp/runsetup.sh"
   config.vm.provision "file", source: "icinga-templates.sh", destination: "/tmp/icinga-templates.sh"
+  config.vm.provision "file", source: "icinga-theme.sh", destination: "/tmp/icinga-theme.sh"
+  config.vm.provision "file", source: "theme", destination: "/tmp/theme"
   config.vm.provision "shell", privileged: true, inline: <<-SHELL
     ICINGA_FQDN=icinga.local bash /tmp/runsetup.sh --yes
   SHELL

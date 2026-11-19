@@ -24,9 +24,9 @@ sudo ./runsetup.sh          # guidato: FQDN, fuso orario, admin web, PostgreSQL 
 sudo ./runsetup.sh --yes    # senza domande (valori predefiniti)
 ```
 
-`runsetup.sh` e `icinga-templates.sh` devono restare nella stessa cartella (se manca, `runsetup.sh` prova a scaricarlo da GitHub).
+`runsetup.sh`, `icinga-templates.sh`, `icinga-theme.sh` e la cartella `theme/` devono restare nella stessa cartella (per i template, se manca lo script, `runsetup.sh` prova a scaricarlo da GitHub).
 
-Parametri preimpostabili via ambiente: `ICINGA_FQDN`, `TIMEZONE`, `WEB_ADMIN_USER`, `WEB_ADMIN_PASS`, `PG_LOCAL=0 PG_HOST PG_PORT PG_ADMIN_USER PG_ADMIN_PASS`, `WITH_TEMPLATES=0` (salta la libreria di template).
+Parametri preimpostabili via ambiente: `ICINGA_FQDN`, `TIMEZONE`, `WEB_ADMIN_USER`, `WEB_ADMIN_PASS`, `PG_LOCAL=0 PG_HOST PG_PORT PG_ADMIN_USER PG_ADMIN_PASS`, `WITH_TEMPLATES=0` (salta la libreria di template), `WITH_THEME=0` (salta il tema).
 
 Al termine: `http://<ip>/icingaweb2`. Le password generate sono in `/root/icinga-credentials.txt` (permessi 600), il log in `/var/log/icinga-setup.log` (template: `/var/log/icinga-templates.log`). Gli script sono rieseguibili.
 
@@ -50,6 +50,7 @@ Interfaccia su `http://localhost:8080/icingaweb2`. Credenziali: `vagrant ssh -c 
 7. Director: migrazione, kickstart (con l'endpoint corretto e ritentativi), servizio systemd
 8. Verifica dei servizi e riepilogo
 9. Libreria di template Director e plugin (`icinga-templates.sh`)
+10. Tema icingacarra: logo e sfondo personalizzati (`icinga-theme.sh`)
 
 Prima di iniziare attende la fine di cloud-init e il lock di apt, e controlla che DNS e rete funzionino (con un messaggio chiaro se non e' cosi').
 
@@ -65,6 +66,19 @@ Si puo' lanciare anche da solo, dopo l'installazione: `sudo ./icinga-templates.s
 6. deploy della configurazione.
 
 Variabili: `WITH_NETEYE=1` (importa anche i template NetEye, inutili senza NetEye), `BASKET_DIRS="linux vmware"` (limita le cartelle di basket), `DIRECTOR_DB` (nome del database Director).
+
+## Tema icingacarra (logo e sfondo)
+
+`icinga-theme.sh` installa in Icinga Web 2 il tema **IcingaCarra**: il logo icingacarra (menu, menu compresso, pagina di accesso) al posto di quello Icinga e uno sfondo a tutto schermo su tutta l'interfaccia, con menu e contenuti semitrasparenti per la leggibilita'. Il tema e' scuro.
+
+```bash
+sudo ./icinga-theme.sh            # installa e imposta come tema predefinito
+sudo ./icinga-theme.sh --remove   # torna al tema Icinga
+```
+
+- File in `theme/`: `IcingaCarra.less`, i loghi in `img/icingacarra/` e `preview.html` (anteprima da aprire nel browser).
+- Lo sfondo e' `theme/img/icingacarra/background.jpg`: sostituiscilo con un'altra immagine per cambiarlo. Se il file manca si usa uno sfondo segnaposto.
+- Dopo l'installazione ricarica la pagina con Ctrl+F5. Chi ha scelto un altro tema nelle proprie preferenze lo mantiene.
 
 ## Problemi noti e soluzioni
 
